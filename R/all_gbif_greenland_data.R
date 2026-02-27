@@ -134,3 +134,25 @@ occ_download_meta(download_key)
 rgbif::occ_download_wait(download_key)
 
 rgbif::occ_download_cancel(download_key)
+
+zipfile <- occ_download_get(download_key, overwrite = TRUE)
+dat <- occ_download_import(zipfile)
+table(dat$basisOfRecord)
+table(dat$year)
+table(dat$taxonomicStatus)
+
+#### filters of all gbif data ####
+dat <- dat |> 
+  filter(basisOfRecord != "FOSSIL_SPECIMEN")
+
+taxa_all_greenland <- dat |> 
+  group_by(scientificName) |> 
+  reframe(count = n())
+
+genus_all_greenland <- dat |> 
+  group_by(genus) |> 
+  reframe(count = n())
+
+inspect <- dat |> 
+  filter(genus == "Ginkgo")
+
