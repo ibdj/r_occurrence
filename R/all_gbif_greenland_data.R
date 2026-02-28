@@ -75,8 +75,7 @@ redlisted_disko_nuu <- points_in_poly |>
   distinct(taxon, da_artsepi, da_slaegt, red_list_lookup_red_list_status,ref)
 
 
-
- #### mapping ####
+#### mapping ####
 
 points_sf <- gbif_redlisted_in_greenland |>
   dplyr::filter(!is.na(decimalLongitude),
