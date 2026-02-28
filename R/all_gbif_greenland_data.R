@@ -33,7 +33,8 @@ checklist <- googlesheets4::read_sheet(
 str(checklist)
 
 checklist <- checklist |> 
-  mutate(across(where(is.list), ~ as.character(unlist(.))))
+  mutate(across(where(is.list), ~ as.character(unlist(.)))) |> 
+  rename(taxon = name)
 
 redlist <- checklist |> 
   filter(grl_red %in% c("NT","VU")) |> 
@@ -48,8 +49,34 @@ gbif_match_redlist <- gbif_vascularplants_greenland20260226 |>
 
 gbif_redlisted_in_greenland <- gbif_match_redlist |> 
   filter(grl_red %in% c("NT","VU"))
+#### import the natur data ####
 
-#### mapping ####
+natur_points <- sf::st_read("occurrences.gpkg")
+natur_points <- sf::st_transform(natur_points, 32622)
+
+group_check <- natur_points |> 
+  group_by(taxon, red_list_lookup_red_list_status) |> 
+  reframe(count = n())
+
+natur_redlist_matched <-natur_points |> 
+  left_join(checklist, by = "taxon")
+
+#### filtering redliste inside the poly #####
+
+inside <- sf::st_within(natur_redlist_matched, poly, sparse = FALSE)[,1]  # [,1] if single polygon
+points_in_poly <- natur_redlist_matched[inside, ]
+
+
+points_in_poly 
+
+redlisted_disko_nuu <- points_in_poly |> 
+  filter(red_list_lookup_red_list_status %in% c("VU","NT")) |> 
+  select(taxon, da_artsepi, da_slaegt, red_list_lookup_red_list_status,ref) |> 
+  distinct(taxon, da_artsepi, da_slaegt, red_list_lookup_red_list_status,ref)
+
+
+
+ #### mapping ####
 
 points_sf <- gbif_redlisted_in_greenland |>
   dplyr::filter(!is.na(decimalLongitude),
@@ -155,4 +182,66 @@ genus_all_greenland <- dat |>
 
 inspect <- dat |> 
   filter(genus == "Ginkgo")
+
+#### filtering fill data by the land only polygon ####
+
+dat_sf <- st_as_sf(
+  dat,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  crs = 4326,
+  remove = FALSE
+)
+
+st_crs(dat_sf)
+
+dat_sf_proj <- st_transform(dat_sf, 32622)
+st_crs(grl)
+st_crs(dat_sf_proj)
+
+within20 <- st_is_within_distance(
+  dat_sf_proj,
+  grl,
+  dist = 20000)
+
+
+dat_20km <- dat_sf_proj[lengths(within20) > 0, ]
+plot(dat_20km)
+nrow(dat_20km)
+summary(dat_20km$coordinateUncertaintyInMeters)
+
+dat_more_20km <- dat_sf_proj[lengths(within20) < 1, ]
+
+plot(dat_more_20km)
+
+ dat_filtered <- subset(
+  dat_20km,
+  is.na(coordinateUncertaintyInMeters) |
+    coordinateUncertaintyInMeters <= 10000
+)
+
+all_gbif_matched_redlist <- dat_filtered |> 
+  left_join(redlist, by = "taxonKey")
+
+all_gbif_matched_redlist_only <- all_gbif_matched_redlist |> 
+  filter(grl_red %in% c("VU", "NT")) |> 
+  select(name, scientificName, grl_red, da_artsepi, da_slaegt)
+
+plot(all_gbif_matched_redlist_only)
+
+inside_all <- sf::st_within(all_gbif_matched_redlist_only, poly, sparse = FALSE)[,1]  # [,1] if single polygon
+points_in_poly <- all_gbif_matched_redlist_only[inside_all, ]
+plot(points_in_poly)
+
+bb <- st_bbox(poly)
+ggplot() +
+  geom_sf(data = poly, fill = "lightblue", color = "darkblue", alpha = 0.3) +
+  geom_sf(data = grl, fill = "darkgreen", color = NA, alpha = 0.3) +
+  geom_sf(data = points_in_poly, color = "blue", size = 1) +
+  geom_sf(data = dat_more_20km, color = "red", size = 1)
+  #coord_sf(
+  #  xlim = c(bb["xmin"], bb["xmax"]),
+  #  ylim = c(bb["ymin"], bb["ymax"]),
+  #  expand = FALSE
+  #) +
+  theme_minimal()
 
